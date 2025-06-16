@@ -1,0 +1,134 @@
+QWidget {
+    background-color: #f2f2f7;
+    color: #2c2c2c;
+    font-family: "Fira Sans", "Noto Sans", sans-serif;
+    font-size: 14px;
+}
+
+QListWidget::item:selected, QTreeView::item:selected {
+    background-color: #b0b0b0;
+    color: #3a3a3a;
+    border-radius: 4px;
+}
+
+QListWidget::item:selected:!active, QTreeView::item:selected:!active {
+    background-color: #c0c0c0;
+    color: #666666;
+}
+
+QListWidget::item:hover, QTreeView::item:hover {
+    background-color: #d0d0d0;
+    color: #2c2c2c;
+}
+
+QListWidget, QTreeView, QTextEdit, QLineEdit {
+    background-color: #ffffff;
+    border: 1px solid #cccccc;
+    border-radius: 6px;
+    padding: 4px;
+}
+
+QPushButton {
+    background-color: #e0e0e0;
+    color: #2c2c2c;
+    border: 1px solid #cccccc;
+    border-radius: 6px;
+    padding: 6px 12px;
+}
+
+QPushButton:hover {
+    background-color: #d0d0d0;
+}
+
+QPushButton:pressed {
+    background-color: #c0c0c0;
+}
+
+QHeaderView::section {
+    background-color: #e0e0e0;
+    color: #2c2c2c;
+    border: none;
+    padding: 6px;
+}
+
+QStatusBar {
+    background-color: #f2f2f7;
+    border-top: 1px solid #cccccc;
+}
+
+QSplitter::handle {
+    background-color: #cccccc;
+}
+
+QScrollBar:vertical {
+    background: #f2f2f7;
+    width: 10px;
+}
+
+QSplitter::handle {
+    background-color: transparent;
+    border: none;
+}
+
+QSplitter::handle:horizontal {
+    width: 2px;
+}
+
+QSplitter::handle:vertical {
+    height: 2px;
+}
+
+QSplitter::handle:vertical {
+    height: 4px;
+}
+
+QScrollBar::handle:vertical {
+    background: #d0d0d0;
+    border-radius: 4px;
+}
+
+QMenu {
+    background-color: #ffffff;
+    color: #2c2c2c;
+    border: 1px solid #cccccc;
+    border-radius: 6px;
+    padding: 4px;
+    font-family: "Fira Sans", "Noto Sans", sans-serif;
+    font-size: 14px;
+}
+
+QMenu::item {
+    background-color: transparent;
+    color: #2c2c2c;
+    padding: 6px 16px;
+    border-radius: 4px;
+}
+
+QMenu::item:selected {
+    background-color: #d0d0d0;
+    color: #1a1a1a;
+}
+
+QMenu::item:pressed {
+    background-color: #c0c0c0;
+}
+
+QMenu::separator {
+    height: 1px;
+    background: #cccccc;
+    margin: 4px 0;
+}
+
+QMenu::indicator {
+    width: 16px;
+    height: 16px;
+}
+
+QMenu::indicator:checked {
+    background-color: #c0c0c0;
+    border-radius: 3px;
+}
+
+QMenu::item:disabled {
+    color: #999999;
+}

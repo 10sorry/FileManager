@@ -1,0 +1,9 @@
+<RCC>
+    <qresource prefix="/">
+        <file>icons/desktop.png</file>
+        <file>icons/docs.png</file>
+        <file>icons/download.png</file>
+        <file>styles/light.qss</file>
+        <file>styles/dark.qss</file>
+    </qresource>
+</RCC>

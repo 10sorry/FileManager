@@ -1,24 +1,28 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include "CustomWidgetItem.h"
+
 #include <QFileSystemModel>
 #include <QStandardPaths>
-#include <QDebug>
 #include <QDesktopServices>
-#include <QUrl>
-#include <QDir>
 #include <QMessageBox>
 #include <QInputDialog>
 #include <QSettings>
-#include <unistd.h>
 #include <QProcess>
 #include <QTimer>
 #include <QSplitter>
 #include <QMenu>
+#include <QFile>
+#include <QUrl>
+#include <QStatusBar>
+#include <QDateTime>
+#include <QDebug>
+#include <QFileIconProvider>
+#include <unistd.h>
 
 const QString HOMEPATH = QDir::homePath();
 const QString PROJECTROOTDIRNAME = "ProjectRootDir";
-const QString PROJECTROOTDIRPATH = QDir::homePath() + "/" + PROJECTROOTDIRNAME;
+const QString PROJECTROOTDIRPATH = HOMEPATH + "/" + PROJECTROOTDIRNAME;
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -26,397 +30,420 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
 
-    QSplitter *splitter = new QSplitter(Qt::Horizontal);
+    QTimer::singleShot(0, this, [this]() {
+        ui->listWidget->setCurrentRow(0);
+    });
 
+    QMenu *stylesMenu = ui->menuBar->findChild<QMenu*>("menuStyle");
+
+    if (!stylesMenu) {
+        qWarning() << "Не найдено меню 'menuStyle'!";
+        return;
+    }
+
+    QDir dir(":/styles");
+    QStringList qssFiles = dir.entryList(QStringList() << "*.qss", QDir::Files);
+
+    QList<QAction*> themeActions;
+
+    for (const QString &fileName : qssFiles) {
+        QAction *action = new QAction(fileName, this);
+
+        connect(action, &QAction::triggered, this, [this, fileName]() {
+            QFile file(":/styles/" + fileName);
+            if (file.open(QFile::ReadOnly | QFile::Text)) {
+                QString style = file.readAll();
+                qApp->setStyleSheet(style);
+            }
+        });
+
+        themeActions.append(action);
+    }
+    stylesMenu->addActions(themeActions);
+
+    //applyDarkTheme();
+
+    splitter = new QSplitter(Qt::Horizontal);
     splitter->addWidget(ui->GroupFileWidget);
     splitter->addWidget(ui->treeView);
-
     ui->GroupFileWidget->setMinimumWidth(200);
-    int tmp = ui->listWidget->sizeHintForRow(0) * ui->listWidget->count() + 2*ui->listWidget->frameWidth();
-    qDebug() << ui->listWidget->sizeHintForRow(1) << ui->listWidget->count() << 2*ui->listWidget->frameWidth() << tmp;
-    qDebug() << ui->listWidget->count() << ui->listWidget2->count();
-
-
-    //splitter->setSizePolicy();
-
     ui->verticalLayout_2->addWidget(splitter);
     splitter->setSizes(QList<int>() << 5 << 300);
 
-    model = new QFileSystemModel;
+    QSettings settings("PRZ", "FileManager");
+    QVariant value = settings.value("splitterSizes");
+    if (value.isValid()) {
+        QVariantList variantSizes = value.toList();
+        QList<int> sizes;
+        for (const QVariant &var : variantSizes)
+            sizes << var.toInt();
+        splitter->setSizes(sizes);
+    }
+
+    model = new QFileSystemModel(this);
     model->setFilter(QDir::AllDirs | QDir::Files | QDir::NoDotAndDotDot);
     ui->treeView->setModel(model);
     model->setRootPath(QDir::rootPath());
     ui->treeView->setRootIndex(model->setRootPath(PROJECTROOTDIRPATH));
-    createMainCategoiesDirs("ProjectRootDir", PROJECTROOTDIRPATH);
-    loadCategories();
 
+    createMainCategoiesDirs(PROJECTROOTDIRNAME, PROJECTROOTDIRPATH);
+    QString desktopPath = QStandardPaths::writableLocation(QStandardPaths::DesktopLocation);
+    qDebug() << QStandardPaths::displayName(QStandardPaths::DesktopLocation) << desktopPath;
+    createMainCategoiesDirs(QStandardPaths::displayName(QStandardPaths::DesktopLocation), QStandardPaths::writableLocation(QStandardPaths::DesktopLocation) + "/");
+    createMainCategoiesDirs(QStandardPaths::displayName(QStandardPaths::DocumentsLocation), QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + "/");
+    loadCategories();
     ui->listWidget->setMaximumHeight( ui->listWidget->sizeHintForRow(0) * ui->listWidget->count() + 2*ui->listWidget->frameWidth());
+
     ui->listWidget2->setContextMenuPolicy(Qt::CustomContextMenu);
     ui->treeView->setContextMenuPolicy(Qt::CustomContextMenu);
 
-    connect(ui->listWidget2, &QListWidget::customContextMenuRequested,
-            this, &MainWindow::showListContextMenu);
+    ui->treeView->setDragEnabled(true);
+    ui->treeView->setAcceptDrops(true);
+    ui->treeView->setDropIndicatorShown(true);
+    ui->treeView->setDragDropMode(QAbstractItemView::DragDrop);
 
-    connect(ui->treeView, &QListWidget::customContextMenuRequested,
-            this, &MainWindow::showTreeContextMenu);
+    connect(ui->listWidget2, &QListWidget::customContextMenuRequested, this, &MainWindow::showListContextMenu);
+    connect(ui->treeView, &QTreeView::customContextMenuRequested, this, &MainWindow::showTreeContextMenu);
 
-    connect(ui->treeView, &QTreeView::doubleClicked, this, [=] (const QModelIndex& index){
+    connect(ui->treeView, &QTreeView::doubleClicked, this, [=](const QModelIndex &index) {
         QString filePath = model->filePath(index);
-        QFileInfo info(filePath);
-        if (info.isFile()) {
+        if (QFileInfo(filePath).isFile()) {
             QDesktopServices::openUrl(QUrl::fromLocalFile(filePath));
         }
     });
 
+    connect(ui->treeView->selectionModel(), &QItemSelectionModel::currentChanged,
+            this, &MainWindow::updateStatusBarInfo);
 
-    connect(ui->listWidget, &QListWidget::itemDoubleClicked,
-            this, [=](QListWidgetItem *current) {
-                if (current) {
-                    QString newPath = PROJECTROOTDIRPATH + "/" + current->text();
-                    if (current->text() != PROJECTROOTDIRNAME) {
-                        ui->treeView->setRootIndex(model->index(newPath));
-                    } else {
-                        ui->treeView->setRootIndex(model->index(PROJECTROOTDIRPATH));
-                    }
-                }
-            });
+    connect(ui->listWidget, &QListWidget::itemDoubleClicked, this, [=](QListWidgetItem *item) {
+        if (item) {
+            QString newPath = HOMEPATH + "/" + item->text();
+            qDebug() << newPath;
+            ui->treeView->setRootIndex(model->index(item->text() == PROJECTROOTDIRNAME ? PROJECTROOTDIRPATH : newPath));
 
-    connect(ui->listWidget2, &QListWidget::itemDoubleClicked,
-            this, [=](QListWidgetItem *current) {
-                if (current) {
-                    qDebug() << "Текущий элемент:" << current->text();
-                    QString newPath = PROJECTROOTDIRPATH + "/" + current->text();
-                    qDebug() << "NewPath: " << newPath;
-                    if (current->text() != PROJECTROOTDIRNAME) {
-                        ui->treeView->setRootIndex(model->index(newPath));
-                    } else {
-                        ui->treeView->setRootIndex(model->index(PROJECTROOTDIRPATH));
-                    }
-                }
-            });
-
-//    connect(ui->lineEdit, &QLineEdit::returnPressed, this, [=] {
-//        const QString path = ui->lineEdit->text();
-//        if (QDir(path).exists() && !ui->lineEdit->text().isEmpty()) {
-//            qDebug() << "Путь существует:" << path;
-//        ui->treeView->setRootIndex(model->setRootPath(path));
-//        } else { ui->treeView->setRootIndex(model->setRootPath(PROJECTROOTDIRPATH));}
-//    });
-
-    connect(ui->lineEdit, &QLineEdit::returnPressed, this, [=]() {
-        const QString& str = ui->lineEdit->text();
-        // Проверка, существует ли путь как директория
-        if (QDir(str).exists() && !ui->lineEdit->text().isEmpty()) {
-            ui->treeView->setRootIndex(model->index(str));
-        }
-        // Если это smb-путь
-        else if (str.startsWith("smb://")) {
-            // Ваш код для обработки SMB пути (например, монтирование или использование других инструментов для работы с ним)
-            qDebug() << "SMB Path detected: " << str;
-            QString smbIp = str.mid(6); //вырезать первые 6 символов str
-            qDebug() << smbIp;
-            mountAndDisplaySmb(str, smbIp);
-        } else {
-            qDebug() << "Invalid path: " << str;
-            ui->treeView->setRootIndex(model->setRootPath(PROJECTROOTDIRPATH));
-            QMessageBox::warning(this, "Invalid Path", "The path you entered does not exist or is not valid.");
         }
     });
 
+    connect(ui->listWidget2, &QListWidget::itemDoubleClicked, this, [=](QListWidgetItem *item) {
+        if (item) {
+            QString newPath = PROJECTROOTDIRPATH + "/" + item->text();
+            ui->treeView->setRootIndex(model->index(newPath));
+        }
+    });
+
+    connect(ui->lineEdit, &QLineEdit::returnPressed, this, &MainWindow::handlePathInput);
 }
 
-MainWindow::~MainWindow()
-{
+MainWindow::~MainWindow() {
     delete ui;
 }
 
-void MainWindow::showTreeContextMenu(const QPoint &pos)
+void MainWindow::dragEnterEvent(QDragEnterEvent *event)
 {
-    QAction *createFolderAction;
-    QAction *createFileAction;
-    QAction *renameAction;
-    QAction *deleteAction;
-    QAction *selectedAction;
-    QPoint globalPos = ui->treeView->mapToGlobal(pos);
+    if (event->mimeData()->hasUrls())
+        event->acceptProposedAction();
+}
 
+void MainWindow::dropEvent(QDropEvent *event)
+{
+    foreach (const QUrl &url, event->mimeData()->urls()) {
+        QString filePath = url.toLocalFile();
+        qDebug() << "Dropped file:" << filePath;
+
+    }
+    event->acceptProposedAction();
+}
+
+void MainWindow::showTreeContextMenu(const QPoint &pos) {
     QMenu contextMenu;
+    QPoint globalPos = ui->treeView->mapToGlobal(pos);
     QModelIndex index = ui->treeView->indexAt(pos);
+
+    QAction *renameAction = nullptr;
+    QAction *deleteAction = nullptr;
+
     if (index.isValid()) {
         QFileInfo file(model->filePath(index));
-        if (file.exists()) {
-            renameAction = contextMenu.addAction("Пермеименовать");
-            if (file.isDir()) {
-                qDebug() << "This is dir";
-                deleteAction = contextMenu.addAction("Удалить категорию вместе с папкой");
-            } else {
-                qDebug() << "This is file";
-                deleteAction = contextMenu.addAction("Удалить файл");
-            }
+        renameAction = contextMenu.addAction("Переименовать");
+
+        if (file.isDir()) {
+            deleteAction = contextMenu.addAction("Удалить папку", this, &MainWindow::onDelete);
+            deleteAction->setData(true);  // true == папка
+        } else {
+            deleteAction = contextMenu.addAction("Удалить файл", this, &MainWindow::onDelete);
+            deleteAction->setData(false);  // false == папка
         }
     } else {
-        createFolderAction = contextMenu.addAction("Создать папку");
-        createFileAction = contextMenu.addAction("Создать файл");
+        contextMenu.addAction("Создать папку", this, [=]() { createFolder(1); });
+        contextMenu.addAction("Создать файл", this, &MainWindow::createFile);
     }
-
-
-    selectedAction = contextMenu.exec(globalPos);
-
-    if (selectedAction == renameAction) {
-        qDebug() << "Rename";
-    } else if (selectedAction == deleteAction) {
-        qDebug() << "Remove";
-
-    } else if (selectedAction == createFolderAction) {
-        createFolder(1);
-        qDebug() << "Add";
-    } else if (selectedAction == createFileAction) {
-        createFile();
-        qDebug() << "Add";
-    }
-}
-
-
-void MainWindow::showListContextMenu(const QPoint &pos)
-{
-    // Приводим локальную позицию к глобальной
-    QPoint globalPos = ui->listWidget2->mapToGlobal(pos);
-
-    QMenu contextMenu;
-
-    QAction *renameAction = contextMenu.addAction("Пермеименовать");
-    QAction *deleteAction = contextMenu.addAction("Удалить категорию вместе с папкой");
-    QAction *addAction = contextMenu.addAction("Добавить категорию");
-    QAction *deleteRootAction = contextMenu.addAction("Удалить директорю проекта");
 
     QAction *selectedAction = contextMenu.exec(globalPos);
+    if (!selectedAction) return;
 
     if (selectedAction == renameAction) {
-        qDebug() << "Rename";
+        // TODO: Реализовать rename
     } else if (selectedAction == deleteAction) {
-        qDebug() << "Remove";
-        emit on_DeleteToolButton_clicked();
-    } else if (selectedAction == addAction) {
-        qDebug() << "Add";
-        createFolder(0);
-    } else if (selectedAction == deleteRootAction) {
-        qDebug() << "Add";
-        emit on_DeleteRootFolderToolButton_clicked();
+        // TODO: Реализовать delete
     }
 }
 
-void MainWindow::loadCategories()
-{
+void MainWindow::showListContextMenu(const QPoint &pos) {
+    QMenu contextMenu;
+    QPoint globalPos = ui->listWidget2->mapToGlobal(pos);
+
+    contextMenu.addAction("Переименовать");
+    contextMenu.addAction("Удалить категорию с папкой", this, &MainWindow::on_DeleteToolButton_clicked);
+    contextMenu.addAction("Добавить категорию", this, [=]() { createFolder(0); });
+    contextMenu.addAction("Удалить директорию проекта", this, &MainWindow::on_DeleteRootFolderToolButton_clicked);
+
+    contextMenu.exec(globalPos);
+}
+
+void MainWindow::loadCategories() {
     QSettings settings("PRZ", "FileManager");
     int size = settings.beginReadArray("categories");
 
     for (int i = 0; i < size; ++i) {
         settings.setArrayIndex(i);
         QString name = settings.value("name").toString();
-//        QString path = settings.value("path").toString();
-        addSideBarItems(name, 1);
         qDebug() << name;
+        if (!name.isEmpty()) addSideBarItems(name, 1);
     }
 
     settings.endArray();
     settings.clear();
 }
 
-void MainWindow::saveAllCategories()
-{
+void MainWindow::saveAllCategories() {
     QSettings settings("PRZ", "FileManager");
     settings.beginWriteArray("categories");
-    int count = ui->listWidget2->count();
 
-    for (int i = 0; i < count; ++i) {
+    for (int i = 0; i < ui->listWidget2->count(); ++i) {
         settings.setArrayIndex(i);
-        QListWidgetItem* item = ui->listWidget2->item(i);
-        settings.setValue("name", item->text());
+        settings.setValue("name", ui->listWidget2->item(i)->text());
     }
+
     settings.endArray();
 }
 
-void MainWindow::mountAndDisplaySmb(const QString& smbPath, const QString &smbIp)
-{
-    // Исправленный путь для монтирования
-    QString mountedPath = "/run/user/" + QString::number(getuid()) + "/gvfs/smb-share:server=" + smbIp + ",share=public";
-    qDebug() << "MOUNTED PATH: " << mountedPath;
+void MainWindow::mountAndDisplaySmb(const QString &smbPath, const QString &smbIp) {
+    QString mountPath = QString("/run/user/%1/gvfs/smb-share:server=%2,share=public").arg(getuid()).arg(smbIp);
+    QProcess::startDetached("gio mount smb://" + smbIp);
 
-    QString bashCmd = "gio mount smb://" + smbIp;
-    qDebug() << "BASH COMMAND: " << bashCmd;
-    QProcess::startDetached(bashCmd);
     QTimer::singleShot(1500, this, [=]() {
-        if (QDir(mountedPath).exists()) {
-            qDebug() << "Mounted!";
-            model->setRootPath(mountedPath);
-            ui->treeView->setRootIndex(model->index(mountedPath));
-        } else {
-            qDebug() << "Still not exists";
+        if (QDir(mountPath).exists()) {
+            ui->treeView->setRootIndex(model->index(mountPath));
         }
     });
+}
 
-    // Проверка текущих смонтированных ресурсов
-    QProcess process;
-    process.start("gio", QStringList() << "mount" << "-l");
-    process.waitForFinished();
-    qDebug() << "Mounted resources: " << process.readAllStandardOutput();
+void MainWindow::onDelete(bool isFile)
+{
+    QAction* action = qobject_cast<QAction*>(sender());
+    if(!action) return;
+
+    bool isDir = action->data().toBool();
+
+    bool isCategory = false;
+
+    QModelIndex index = ui->treeView->currentIndex();
+    if (!index.isValid()) return;
+
+    QString path = model->filePath(index);
+    QFileInfo fileInfo(path);
+
+    if (isDir) {
+        if (fileInfo.isDir()) {
+            for (int i = ui->listWidget2->count() - 1; i >= 0; --i) {
+                QListWidgetItem* item = ui->listWidget2->item(i);
+                if (item->text() == fileInfo.fileName()) {
+                    qDebug() << "it's a category" << item->text();
+                    isCategory = true;
+                    delete ui->listWidget2->takeItem(i);
+                }
+            }
+            if (QDir(path).removeRecursively()) {
+                qDebug() << "Папка удалена:" << path;
+            } else {
+                qDebug() << "Не удалось удалить папку:" << path;
+            }
+        }
+    } else {
+        if (fileInfo.isFile()) {
+            if (QFile::remove(path)) {
+                qDebug() << "Файл удалён:" << path;
+            } else {
+                qDebug() << "Не удалось удалить файл:" << path;
+            }
+        }
+    }
+    qDebug() << ui->treeView->currentIndex();
+    //QDir(categoryPath).removeRecursively();
 }
 
 void MainWindow::addSideBarItems(const QString &name, int type) {
+    if (name.isEmpty()) return;
+    QFileIconProvider iconProvider;
+    QIcon icon;
+    if (name == "Desktop") {
+        icon = QIcon(":/icons/desktop.png");
+    } else if (name == "Documents") {
+        icon = QIcon(":/icons/docs.png");
+    } else if (name == "Downloads") {
+        icon = QIcon(":/icons/docs.png");
+    } else {
+        icon = iconProvider.icon(QFileIconProvider::Desktop);
+    }
+
     switch (type) {
-        case 0:
-            new QListWidgetItem(name, ui->listWidget);
-            break;
-        case 1:
-            new QListWidgetItem(name, ui->listWidget2);
-            break;
-        default:
-            break;
+    case 0: new QListWidgetItem(icon, name, ui->listWidget); break;
+    case 1: new QListWidgetItem(name, ui->listWidget2); break;
     }
 }
 
-void MainWindow::addSideBarItems(const QString &name, const QString &path)
+QIcon MainWindow::iconForLocation(StandardLocation location)
 {
-    if(path.isEmpty() || !QFileInfo(path).exists()) return;
-    CustomWidgetItem* item = new CustomWidgetItem(name, path);
-    ui->listWidget2->addItem(item);
-}
-
-void MainWindow::on_AddToolButton_clicked()
-{
-    bool ok;
-    QString categoryText = QInputDialog::getText(this,
-                                         "Новая категория",
-                                         "Назовите вашу категорию:",
-                                         QLineEdit::Normal,
-                                         "", &ok);
-    if (ok && !categoryText.isEmpty()) {
-        qDebug() << "New category: "  << categoryText;
+    switch (location) {
+    case StandardLocation::Desktop:
+        return QIcon(":/icons/desktop.png");
+    case StandardLocation::Documents:
+        return QIcon(":/icons/documents.png");
+    case StandardLocation::Downloads:
+        return QIcon(":/icons/downloads.png");
+    case StandardLocation::Pictures:
+        return QIcon(":/icons/pictures.png");
+    case StandardLocation::Music:
+        return QIcon(":/icons/music.png");
+    case StandardLocation::Videos:
+        return QIcon(":/icons/videos.png");
+    default:
+        return QIcon(":/icons/file.png");
     }
-    qDebug() << "PROJECTROOTDIRPATH: " << PROJECTROOTDIRPATH << "FilePath: " << model->filePath(ui->treeView->rootIndex());
-    if (model->filePath(ui->treeView->rootIndex()) != PROJECTROOTDIRPATH) {
-        QMessageBox::warning(this, " ", "Корневая папка проекта не создана, категории не будут созданы");
-        return;
-    }
-
-    addSideBarItems(categoryText, 1);
-    model->mkdir(model->index(PROJECTROOTDIRPATH), categoryText);
 }
 
-void MainWindow::closeEvent(QCloseEvent *event)
-{
-    saveAllCategories();
-    QMainWindow::closeEvent(event);
-}
 
-void MainWindow::createMainCategoiesDirs(const QString& name, const QString& path)
-{
-    QModelIndex index = model->index(path);
+void MainWindow::createMainCategoiesDirs(const QString &name, const QString &path) {
     if (QDir(path).exists()) {
-        qDebug() << name << "is present in filesystem";
-        //ui->treeView->setRootIndex(rootIndex);
         addSideBarItems(name, 0);
     } else if (path == PROJECTROOTDIRPATH) {
-        qDebug() << "Creating root dir..." << PROJECTROOTDIRPATH;
-        QModelIndex parentIndex = model->index(QDir::homePath());
-        QModelIndex newDirIndex = model->mkdir(parentIndex, PROJECTROOTDIRNAME);
-        ui->treeView->setRootIndex(newDirIndex);
+        model->mkdir(model->index(HOMEPATH), PROJECTROOTDIRNAME);
         addSideBarItems(name, 0);
-    } else {
-        qDebug() << "Error: strange filesystem";
     }
 }
 
-void MainWindow::on_DeleteRootFolderToolButton_clicked()
-{
-    qDebug() << PROJECTROOTDIRPATH;
-    if (!QDir(PROJECTROOTDIRPATH).exists()) { qDebug() << "RootDir not present in a filesystem - nothing to remove"; }
-    else
-    {
-        QDir dir(PROJECTROOTDIRPATH);
-        if (dir.removeRecursively()) {
-            qDebug() << "RootDir was removed, current dir - " << QDir::rootPath();
-        }
+void MainWindow::on_DeleteRootFolderToolButton_clicked() {
+    if (QDir(PROJECTROOTDIRPATH).removeRecursively()) {
         model->setRootPath(QDir::rootPath());
         ui->treeView->setRootIndex(model->index(QDir::rootPath()));
-
     }
 }
 
-void MainWindow::on_ClearToolButton_clicked()
-{
-    QSettings settings("PRZ", "FileManager");
-    settings.clear();
-
+void MainWindow::on_ClearToolButton_clicked() {
+    QSettings("PRZ", "FileManager").clear();
     ui->listWidget->clear();
 }
 
-void MainWindow::on_DeleteToolButton_clicked()
+void MainWindow::applyDarkTheme() {
+    QPalette darkPalette;
+    darkPalette.setColor(QPalette::Window, QColor(53,53,53));
+    darkPalette.setColor(QPalette::WindowText, Qt::white);
+    darkPalette.setColor(QPalette::Base, QColor(25,25,25));
+    darkPalette.setColor(QPalette::AlternateBase, QColor(53,53,53));
+    darkPalette.setColor(QPalette::ToolTipBase, Qt::white);
+    darkPalette.setColor(QPalette::ToolTipText, Qt::white);
+    darkPalette.setColor(QPalette::Text, Qt::white);
+    darkPalette.setColor(QPalette::Button, QColor(53,53,53));
+    darkPalette.setColor(QPalette::ButtonText, Qt::white);
+    darkPalette.setColor(QPalette::BrightText, Qt::red);
+
+    qApp->setPalette(darkPalette);
+}
+
+void MainWindow::updateStatusBarInfo(const QModelIndex &current, const QModelIndex &)
 {
-    QListWidgetItem *item = ui->listWidget2->currentItem();
+    QFileInfo info(model->filePath(current));
+    QString details;
 
-    if (item) {
-        QString categoryPath = model->filePath(ui->treeView->rootIndex()) + "/" + item->text();
-        qDebug() << categoryPath;
-
-        delete ui->listWidget2->takeItem(ui->listWidget2->row(item));
-        QDir dir(categoryPath);
-        if (dir.removeRecursively()) {
-            qDebug() << "Dir was removed recused way";
-        }
-    } else {
-        qDebug() << "No categories to delete";
+    if (info.exists()) {
+        details = QString("Имя: %1 | Размер: %2 байт | Изменён: %3 | Права: %4 | Тип: %5")
+                      .arg(info.fileName())
+                      .arg(info.size())
+                      .arg(info.lastModified().toString("dd.MM.yyyy hh:mm"))
+                      .arg(info.permissions(), 0, 8)
+                      .arg(info.isDir() ? "Папка" : (info.isSymLink() ? "Симлинк" : "Файл"));
     }
+
+    statusBar()->showMessage(details);
+}
+
+
+void MainWindow::on_DeleteToolButton_clicked() {
+    QListWidgetItem *item = ui->listWidget2->currentItem();
+    if (!item) return;
+
+    QString categoryPath = model->filePath(ui->treeView->rootIndex()) + "/" + item->text();
+    delete ui->listWidget2->takeItem(ui->listWidget2->row(item));
+    QDir(categoryPath).removeRecursively();
 }
 
 void MainWindow::createFolder(int type) {
     bool ok;
-    QString txt;
-    switch (type) {
-        case 0: {
-            txt = QInputDialog::getText(this,
-                                                         "Новая категория",
-                                                         "Назовите вашу категорию:",
-                                                         QLineEdit::Normal,
-                                                         "", &ok);
-            break;
-        }
-        case 1: {
-            txt = QInputDialog::getText(this,
-                                                         "Новая папка",
-                                                         "Назовите вашу папку:",
-                                                         QLineEdit::Normal,
-                                                         "", &ok);
-            break;
-        }
-    }
+    QString title = (type == 0) ? "Новая категория" : "Новая папка";
+    QString text = QInputDialog::getText(this, title, "Введите название:", QLineEdit::Normal, "", &ok);
+
+    if (!ok || text.isEmpty()) return;
 
     if (model->filePath(ui->treeView->rootIndex()) != PROJECTROOTDIRPATH) {
-        QMessageBox::warning(this, " ", "Корневая папка проекта не создана, категории не будут созданы");
+        QMessageBox::warning(this, "Ошибка", "Категории создаются только в корневой папке проекта.");
         return;
     }
 
-    addSideBarItems(txt, 1);
-    model->mkdir(model->index(PROJECTROOTDIRPATH), txt);
+    addSideBarItems(text, 1);
+    model->mkdir(model->index(PROJECTROOTDIRPATH), text);
 }
 
 void MainWindow::createFile() {
     bool ok;
-    QString txt = QInputDialog::getText(this,
-                                                 "Новая файл",
-                                                 "Назовите вашу файл:",
-                                                 QLineEdit::Normal,
-                                                 "", &ok);
-    QString newFilePath = model->filePath(ui->treeView->rootIndex()) + "/" + txt;
-    qDebug() << newFilePath;
-    QProcess process;
-    process.start("touch", QStringList() << newFilePath);
-    if (!process.waitForFinished()) {
-        qDebug() << "Ошибка при создании файла";
-    }
+    QString fileName = QInputDialog::getText(this, "Новый файл", "Введите название файла:", QLineEdit::Normal, "", &ok);
 
-    qDebug() << "touch stdout:" << process.readAllStandardOutput();
-    qDebug() << "touch stderr:" << process.readAllStandardError();
+    if (!ok || fileName.isEmpty()) return;
+
+    QString newFilePath = model->filePath(ui->treeView->rootIndex()) + "/" + fileName;
+    QFile file(newFilePath);
+    if (!file.open(QIODevice::WriteOnly)) {
+        QMessageBox::warning(this, "Ошибка", "Не удалось создать файл.");
+    }
 }
 
+void MainWindow::handlePathInput()
+{
+    const QString& str = ui->lineEdit->text();
+    if (QDir(str).exists() && !ui->lineEdit->text().isEmpty()) {
+        ui->treeView->setRootIndex(model->index(str));
+    }
+    else if (str.startsWith("smb://")) {
+        qDebug() << "SMB Path detected: " << str;
+        QString smbIp = str.mid(6); //вырезать первые 6 символов str
+        qDebug() << smbIp;
+        mountAndDisplaySmb(str, smbIp);
+    } else {
+        qDebug() << "Invalid path: " << str;
+        ui->treeView->setRootIndex(model->setRootPath(PROJECTROOTDIRPATH));
+        QMessageBox::warning(this, "Invalid Path", "The path you entered does not exist or is not valid.");
+    }
+}
 
+void MainWindow::closeEvent(QCloseEvent *event) {
+    saveAllCategories();
 
+    QSettings settings("PRZ", "FileManager");
+
+    QList<int> sizes = splitter->sizes();
+    QVariantList variantSizes;
+    for (int size : sizes)
+        variantSizes << size;
+    settings.setValue("splitterSizes", variantSizes);  // <-- вот сохранение текущих размеров
+
+    QMainWindow::closeEvent(event);
+}
