@@ -1,0 +1,20 @@
+[
+{
+  "directory": "/home/boss/FileManager/build/Desktop-Debug",
+  "command": "/usr/bin/g++ -DQT_CORE_LIB -DQT_GUI_LIB -DQT_WIDGETS_LIB -I/home/boss/FileManager/build/Desktop-Debug/FileManager_autogen/include -isystem /usr/include/qt -isystem /usr/include/qt/QtWidgets -isystem /usr/include/qt/QtGui -isystem /usr/include/qt/QtCore -isystem /usr/lib/qt/mkspecs/linux-g++ -DQT_QML_DEBUG -g -std=gnu++17 -fdiagnostics-color=always -fPIC -o CMakeFiles/FileManager.dir/FileManager_autogen/mocs_compilation.cpp.o -c /home/boss/FileManager/build/Desktop-Debug/FileManager_autogen/mocs_compilation.cpp",
+  "file": "/home/boss/FileManager/build/Desktop-Debug/FileManager_autogen/mocs_compilation.cpp",
+  "output": "CMakeFiles/FileManager.dir/FileManager_autogen/mocs_compilation.cpp.o"
+},
+{
+  "directory": "/home/boss/FileManager/build/Desktop-Debug",
+  "command": "/usr/bin/g++ -DQT_CORE_LIB -DQT_GUI_LIB -DQT_WIDGETS_LIB -I/home/boss/FileManager/build/Desktop-Debug/FileManager_autogen/include -isystem /usr/include/qt -isystem /usr/include/qt/QtWidgets -isystem /usr/include/qt/QtGui -isystem /usr/include/qt/QtCore -isystem /usr/lib/qt/mkspecs/linux-g++ -DQT_QML_DEBUG -g -std=gnu++17 -fdiagnostics-color=always -fPIC -o CMakeFiles/FileManager.dir/main.cpp.o -c /home/boss/FileManager/main.cpp",
+  "file": "/home/boss/FileManager/main.cpp",
+  "output": "CMakeFiles/FileManager.dir/main.cpp.o"
+},
+{
+  "directory": "/home/boss/FileManager/build/Desktop-Debug",
+  "command": "/usr/bin/g++ -DQT_CORE_LIB -DQT_GUI_LIB -DQT_WIDGETS_LIB -I/home/boss/FileManager/build/Desktop-Debug/FileManager_autogen/include -isystem /usr/include/qt -isystem /usr/include/qt/QtWidgets -isystem /usr/include/qt/QtGui -isystem /usr/include/qt/QtCore -isystem /usr/lib/qt/mkspecs/linux-g++ -DQT_QML_DEBUG -g -std=gnu++17 -fdiagnostics-color=always -fPIC -o CMakeFiles/FileManager.dir/mainwindow.cpp.o -c /home/boss/FileManager/mainwindow.cpp",
+  "file": "/home/boss/FileManager/mainwindow.cpp",
+  "output": "CMakeFiles/FileManager.dir/mainwindow.cpp.o"
+}
+]
